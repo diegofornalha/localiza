@@ -11,40 +11,40 @@ Chatbot com IA Generativa para reservas de veículos: dúvidas, cotações, adic
 ## Arquitetura
 
 ```
-                              ┌──────────────┐
-                              │   Web Chat   │
-                              │   (React)    │
-                              └──────┬───────┘
-                                     │
-                                     ▼
-                         ┌───────────────────────┐
-                         │     API GATEWAY       │
-                         │  Rate Limit • Auth    │
-                         └───────────┬───────────┘
-                                     │
-                                     ▼
-┌───────────────┐        ┌───────────────────────┐        ┌───────────────┐
-│    REDIS      │◄──────►│     ORQUESTRADOR      │◄──────►│    REDIS      │
-│   Sessions    │        │      (FastAPI)        │        │    Cache      │
-└───────────────┘        └───────────┬───────────┘        └───────────────┘
-                                     │
-            ┌────────────────────────┼────────────────────────┐
-            │                        │                        │
-            ▼                        ▼                        ▼
-┌───────────────────┐    ┌───────────────────┐    ┌───────────────────┐
-│    LLM ROUTER     │    │    RAG ENGINE     │    │  FUNCTION CALL    │
-│    (LiteLLM)      │    │   (LlamaIndex)    │    │                   │
-│                   │    │                   │    │  • Cotação        │
-│  GPT-4o • Claude  │    │  Qdrant (Vector)  │    │  • Reserva        │
-│  Llama (fallback) │    │  FAQ • Políticas  │    │  • Agências       │
-└───────────────────┘    └───────────────────┘    └─────────┬─────────┘
-                                                           │
-                                                           ▼
-                                             ┌─────────────────────────┐
-                                             │     APIs LOCALIZA       │
-                                             │  Agências • Veículos    │
-                                             │  Cotações • Reservas    │
-                                             └─────────────────────────┘
+                         ┌──────────────────┐
+                         │    Web Chat      │
+                         │     (React)      │
+                         └────────┬─────────┘
+                                  │
+                                  ▼
+                         ┌──────────────────┐
+                         │   API GATEWAY    │
+                         │ Rate Limit • Auth│
+                         └────────┬─────────┘
+                                  │
+                                  ▼
+┌───────────────┐     ┌──────────────────────┐     ┌───────────────┐
+│    REDIS      │◄───►│    ORQUESTRADOR      │◄───►│    REDIS      │
+│   Sessions    │     │      (FastAPI)       │     │    Cache      │
+└───────────────┘     └──────────┬───────────┘     └───────────────┘
+                                 │
+            ┌────────────────────┼────────────────────┐
+            │                    │                    │
+            ▼                    ▼                    ▼
+┌───────────────────┐ ┌───────────────────┐ ┌───────────────────┐
+│   LLM ROUTER      │ │   RAG ENGINE      │ │   FUNCTION CALL   │
+│   (LiteLLM)       │ │   (LlamaIndex)    │ │                   │
+│                   │ │                   │ │  • Cotação        │
+│ GPT-4o • Claude   │ │ Qdrant (Vector)   │ │  • Reserva        │
+│ Llama (fallback)  │ │ FAQ • Políticas   │ │  • Agências       │
+└───────────────────┘ └───────────────────┘ └─────────┬─────────┘
+                                                      │
+                                                      ▼
+                                        ┌─────────────────────────┐
+                                        │     APIs LOCALIZA       │
+                                        │  Agências • Veículos    │
+                                        │  Cotações • Reservas    │
+                                        └─────────────────────────┘
 ```
 
 ---
@@ -54,27 +54,29 @@ Chatbot com IA Generativa para reservas de veículos: dúvidas, cotações, adic
 | Componente | Tecnologia | Função |
 |------------|------------|--------|
 | **Frontend** | React | Widget de chat web |
-| **Gateway** | Kong | Rate limit, autenticação |
-| **Orquestrador** | FastAPI | Gerencia conversa |
-| **LLM** | LiteLLM | Multi-provider |
+| **Gateway** | Kong | Rate limit, auth, TLS, load balancing |
+| **Orquestrador** | FastAPI | Gerencia conversa e fluxos |
+| **LLM Router** | LiteLLM | Multi-provider com fallback |
 | **RAG** | LlamaIndex + Qdrant | Busca FAQ/políticas |
 | **Cache** | Redis | Sessões e cache |
-| **Infra** | Kubernetes | Auto-scaling |
+| **Infra** | Kubernetes + HPA | Auto-scaling |
 
 ---
 
 ## Fluxo
 
 ```
-Usuário → Gateway → Orquestrador → LLM/RAG → APIs Localiza → Resposta
+Web User → Kong → Orchestrator → LLM → Function Calling → API Localiza → Resposta
+                       ↕
+                     Redis
 ```
 
-1. Usuário envia mensagem
-2. Gateway valida e roteia
-3. Orquestrador recupera contexto (Redis)
+1. Usuário envia mensagem via web
+2. Kong valida, autentica e roteia
+3. Orchestrator recupera contexto (Redis)
 4. LLM classifica intenção
-5. RAG busca informações se necessário
-6. Function Call executa ação (cotação, reserva)
+5. Function Calling executa ação (cotação, reserva)
+6. API Localiza retorna dados
 7. LLM formata resposta
 8. Retorna ao usuário
 
